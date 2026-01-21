@@ -1,0 +1,67 @@
+{
+  "name": "openagent-ai",
+  "displayName": "OpenAgent AI",
+  "publisher": "YousifAbdalkarim",
+  "description": "Open and free AI agent inside VS Code",
+  "version": "1.0.2",
+  "icon": "appIcon.png",
+  "engines": {
+    "vscode": "^1.108.0"
+  },
+  "type": "module",
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:auto.openAgent"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "auto.openAgent",
+        "title": "Open AI Agent"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "openagent",
+          "title": "OpenAgent AI",
+          "icon": "appIcon.png"
+        }
+      ]
+    },
+    "views": {
+      "openagent": [
+        {
+          "id": "mainView",
+          "name": "Agent"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "npx tsc -p ./",
+    "watch": "npx tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "echo \"No tests configured\""
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.108.1",
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.39.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "marked": "^17.0.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/youven/openAgent"
+  }
+}
