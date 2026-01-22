@@ -3,6 +3,8 @@ import { callAI } from './ai/ollama.js';
 
 let panel: vscode.WebviewPanel | undefined;
 export function activate(context: vscode.ExtensionContext) {
+  console.log('OpenAgent: activate()');
+  // Register the command that opens the standalone webview panel
   context.subscriptions.push(
     vscode.commands.registerCommand('auto.openAgent', async () => {
       // 1️⃣ Get the token
@@ -12,7 +14,12 @@ export function activate(context: vscode.ExtensionContext) {
         return; // stop if user canceled
       }
 
-      // 2️⃣ Open the Webview
+      if (panel) {
+        panel.reveal(vscode.ViewColumn.One);
+        return;
+      }
+
+      // 2️⃣ Open the Webview panel
       panel = vscode.window.createWebviewPanel(
         'openAgent',
         'Open AI Agent',
@@ -24,22 +31,100 @@ export function activate(context: vscode.ExtensionContext) {
 
       panel.webview.onDidReceiveMessage(async (msg) => {
         if (msg.command === 'send') {
-          const reply = await callAI(msg.text, msg.model, token);
-          if (panel) {
-            panel.webview.postMessage({ reply });
+          try {
+            const reply = await callAI(msg.text, msg.model, token);
+            panel?.webview.postMessage({ reply });
+          } catch (e) {
+            panel?.webview.postMessage({ reply: '⚠️ Failed to get response from AI.' });
           }
         }
       });
     })
   );
+
+  // Diagnostic command: attempt to programmatically reveal the contributed view
+  context.subscriptions.push(
+    vscode.commands.registerCommand('auto.revealMainView', async () => {
+      console.log('OpenAgent: revealMainView command running');
+      try {
+        // Try common view container command
+        await vscode.commands.executeCommand('workbench.view.extension.openagent');
+        console.log('OpenAgent: executed workbench.view.extension.openagent');
+      } catch (e) {
+        console.error('OpenAgent: failed to execute workbench.view.extension.openagent', e);
+      }
+
+      // Try opening view by id using different formats
+      for (const id of ['openagent/mainView', 'openagent.mainView', 'mainView']) {
+        try {
+          // Some VS Code versions support 'workbench.views.openView'
+          // we try executing it; if unsupported it will throw.
+          // Fallback to just logging the attempt.
+          await vscode.commands.executeCommand('workbench.views.openView', id);
+          console.log('OpenAgent: workbench.views.openView succeeded for', id);
+        } catch (err) {
+          console.log('OpenAgent: workbench.views.openView not available/succeeded for', id, err === null || err === void 0 ? void 0 : err.toString());
+        }
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('auto.clearToken', async () => {
+      await context.secrets.delete('ollamaToken');
+      vscode.window.showInformationMessage('Ollama token cleared.');
+    })
+  );
+
+  // Register a WebviewViewProvider for the activity bar view (mainView)
+  console.log('OpenAgent: registering WebviewViewProvider for mainView');
+  const provider = new OpenAgentViewProvider(context);
+  // Register under multiple id formats to cover different resolution patterns
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('mainView', provider)
+  );
 }
 
+class OpenAgentViewProvider implements vscode.WebviewViewProvider {
+  private _view?: vscode.WebviewView;
+  constructor(private readonly context: vscode.ExtensionContext) { }
+
+  public resolveWebviewView(webviewView: vscode.WebviewView) {
+    console.log('OpenAgent: resolveWebviewView() called');
+    this._view = webviewView;
+    webviewView.webview.options = { enableScripts: true };
+    webviewView.webview.html = getWebviewHtml();
+
+    webviewView.webview.onDidReceiveMessage(async (msg) => {
+      if (msg.command === 'send') {
+        try {
+          const token = await getToken(this.context);
+          if (!token) {
+            webviewView.webview.postMessage({ reply: 'Ollama token is required.' });
+            return;
+          }
+          const reply = await callAI(msg.text, msg.model, token);
+          webviewView.webview.postMessage({ reply });
+        } catch (e) {
+          webviewView.webview.postMessage({ reply: '⚠️ Failed to get response from AI.' });
+        }
+      }
+    });
+  }
+}
 function getWebviewHtml() {
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy"
+      content="
+        default-src 'none';
+        img-src https: data:;
+        style-src 'unsafe-inline' https://cdnjs.cloudflare.com;
+        script-src 'unsafe-inline' https://cdnjs.cloudflare.com;
+      ">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Open AI Agent</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
@@ -77,13 +162,17 @@ function getWebviewHtml() {
   .agent { background-color: #3c3c3c; color: #eee; align-self: flex-start; }
   .typing { font-style: italic; color: #aaa; margin: 4px 0; }
   #input-container { display: flex; gap: 8px; margin-bottom: 8px; }
-  #input { flex: 1; padding: 10px; border-radius: 20px; border: none; outline: none; background-color: #333; color: #fff; }
+  #input { flex: 1; padding: 10px; border-radius: 20px; border: none; outline: none; background-color: #333; color: #fff; resize: none;
+  max-height: 150px;
+  overflow-y: auto;
+  line-height: 1.4; }
   #send-btn { padding: 0 20px; border-radius: 20px; border: none; background-color: #0a84ff; color: #fff; cursor: pointer; transition: 0.2s; }
   #send-btn:hover { background-color: #0066cc; }
   #model-container { display: flex; justify-content: flex-start; }
   #model { padding: 8px 12px; border-radius: 20px; border: none; background-color: #333; color: #fff; cursor: pointer; outline: none; }
   #model option { background-color: #333; color: #fff; }
   pre { padding: 10px; border-radius: 8px; overflow-x: auto; }
+
 </style>
 </head>
 <body>
@@ -91,7 +180,7 @@ function getWebviewHtml() {
   <div id="chat"></div>
 
   <div id="input-container">
-    <input id="input" placeholder="Type a message..." />
+    <textarea id="input" rows="1" placeholder="Type a message..."></textarea>
     <button id="send-btn">Send</button>
   </div>
 
@@ -158,8 +247,15 @@ async function sendMessage() {
 }
 
 sendBtn.addEventListener('click', sendMessage);
-input.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') sendMessage();
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault(); // stop newline
+    sendMessage();
+  }
+});
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = input.scrollHeight + 'px';
 });
 
 window.addEventListener('message', event => {

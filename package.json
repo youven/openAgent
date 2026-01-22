@@ -3,7 +3,7 @@
   "displayName": "OpenAgent AI",
   "publisher": "YousifAbdalkarim",
   "description": "Open and free AI agent inside VS Code",
-  "version": "1.0.2",
+  "version": "1.0.8",
   "icon": "appIcon.png",
   "engines": {
     "vscode": "^1.108.0"
@@ -13,7 +13,10 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:auto.openAgent"
+    "onView:openagent/mainView",
+    "onCommand:auto.openAgent",
+    "onCommand:auto.revealMainView",
+    "onCommand:auto.clearToken"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -21,6 +24,14 @@
       {
         "command": "auto.openAgent",
         "title": "Open AI Agent"
+      },
+      {
+        "command": "auto.revealMainView",
+        "title": "Reveal OpenAgent View (diagnostic)"
+      },
+      {
+        "command": "auto.clearToken",
+        "title": "Clear Ollama Token"
       }
     ],
     "viewsContainers": {
@@ -36,7 +47,8 @@
       "openagent": [
         {
           "id": "mainView",
-          "name": "Agent"
+          "name": "Agent",
+          "type": "webview"
         }
       ]
     }
@@ -44,17 +56,13 @@
   "scripts": {
     "compile": "npx tsc -p ./",
     "watch": "npx tsc -watch -p ./",
-    "vscode:prepublish": "npm run compile",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src",
-    "test": "echo \"No tests configured\""
+    "vscode:prepublish": "npm run compile"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "@types/vscode": "^1.108.1",
-    "@vscode/test-electron": "^2.5.2",
-    "eslint": "^9.39.2",
+    "markdownlint-cli": "^0.47.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
