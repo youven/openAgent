@@ -3,21 +3,20 @@
   "displayName": "OpenAgent AI",
   "publisher": "YousifAbdalkarim",
   "description": "Open and free AI agent inside VS Code",
-  "version": "1.0.8",
+  "version": "1.0.12",
   "icon": "appIcon.png",
   "engines": {
     "vscode": "^1.108.0"
   },
   "type": "module",
   "categories": [
+    "AI",
+    "Machine Learning",
+    "Chat",
+    "Programming Languages",
     "Other"
   ],
-  "activationEvents": [
-    "onView:openagent/mainView",
-    "onCommand:auto.openAgent",
-    "onCommand:auto.revealMainView",
-    "onCommand:auto.clearToken"
-  ],
+  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -48,7 +47,8 @@
         {
           "id": "mainView",
           "name": "Agent",
-          "type": "webview"
+          "type": "webview",
+          "icon": "appIcon.png"
         }
       ]
     }

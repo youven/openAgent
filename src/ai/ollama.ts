@@ -1,8 +1,11 @@
 import { marked } from 'marked';
 
-export async function callAI(text: string, model: string, token: string): Promise<string> {
-  //const token = 'b31ea0f5f30241b4803f963cf247a39d.JDhL81ABh5EbrsQBJkWWHX5R';
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
 
+export async function* streamAI(messages: ChatMessage[], model: string, token: string) {
   try {
     const res = await fetch('https://ollama.com/api/chat', {
       method: 'POST',
@@ -12,7 +15,62 @@ export async function callAI(text: string, model: string, token: string): Promis
       },
       body: JSON.stringify({
         model,
-        messages: [{ role: 'user', content: text }],
+        messages,
+        stream: true
+      })
+    });
+
+    if (!res.ok) {
+      yield `Error: ${res.status} ${res.statusText}`;
+      return;
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) {
+      yield 'Error: Failed to get reader from response body';
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let fullContent = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n');
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const json = JSON.parse(line);
+          if (json.message?.content) {
+            fullContent += json.message.content;
+            yield fullContent;
+          }
+        } catch (e) {
+          console.error('Error parsing JSON line:', line, e);
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error('streamAI fetch error:', err);
+    yield 'Failed to fetch AI response';
+  }
+}
+
+export async function callAI(messages: ChatMessage[], model: string, token: string): Promise<string> {
+  try {
+    const res = await fetch('https://ollama.com/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        model,
+        messages,
         stream: false
       })
     });
@@ -23,10 +81,7 @@ export async function callAI(text: string, model: string, token: string): Promis
 
     const data = await res.json();
     const markdownReply = data.message?.content ?? 'No reply from AI';
-
-    // Convert Markdown to HTML
-    const htmlReply = marked.parse(markdownReply);
-    return htmlReply;
+    return marked.parse(markdownReply) as string;
 
   } catch (err: any) {
     console.error('callAI fetch error:', err);
