@@ -3,10 +3,10 @@
   "displayName": "OpenAgent AI",
   "publisher": "YousifAbdalkarim",
   "description": "Open and free AI agent inside VS Code",
-  "version": "1.0.12",
+  "version": "1.0.14",
   "icon": "appIcon.png",
   "engines": {
-    "vscode": "^1.108.0"
+    "vscode": "^1.104.0"
   },
   "type": "module",
   "categories": [
@@ -31,6 +31,10 @@
       {
         "command": "auto.clearToken",
         "title": "Clear Ollama Token"
+      },
+      {
+        "command": "auto.listModels",
+        "title": "List Available Models"
       }
     ],
     "viewsContainers": {
@@ -61,7 +65,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "@types/vscode": "^1.108.1",
+    "@types/vscode": "^1.104.1",
     "markdownlint-cli": "^0.47.0",
     "typescript": "^5.9.3"
   },

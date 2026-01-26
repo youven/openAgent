@@ -77,6 +77,45 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand('auto.listModels', async () => {
+      const token = await getToken(context);
+      if (!token) {
+        vscode.window.showErrorMessage('Ollama token is required to list models.');
+        return;
+      }
+
+      try {
+        const res = await fetch('https://ollama.com/api/tags', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!res.ok) {
+          vscode.window.showErrorMessage(`Failed to fetch models: ${res.status} ${res.statusText}`);
+          return;
+        }
+
+        const data = await res.json() as { models: { name: string }[] };
+        const modelNames = data.models.map(m => m.name).join(', ');
+
+        if (modelNames) {
+          vscode.window.showInformationMessage(`Available models: ${modelNames}`);
+          // Also show in an output channel for better visibility
+          const channel = vscode.window.createOutputChannel('OpenAgent Models');
+          channel.appendLine('Available Models:');
+          data.models.forEach(m => channel.appendLine(`- ${m.name}`));
+          channel.show();
+        } else {
+          vscode.window.showInformationMessage('No models found.');
+        }
+      } catch (err) {
+        vscode.window.showErrorMessage(`Error listing models: ${err}`);
+      }
+    })
+  );
+
   // Register a WebviewViewProvider for the activity bar view (mainView)
   console.log('OpenAgent: registering WebviewViewProvider for mainView');
   const provider = new OpenAgentViewProvider(context);
@@ -339,9 +378,16 @@ function getWebviewHtml() {
       <div class="input-footer">
         <div class="footer-left">
           <select id="model">
-            <option value="gpt-oss:120b-cloud">GPT‑OSS 120B</option>
-            <option value="qwen3-coder:480b-cloud">Qwen3 Coder 480B</option>
-            <option value="gemma3-cloud">Gemma 3</option>
+            <option value="gpt-oss:120b">GPT‑OSS 120B</option>
+            <option value="deepseek-v3.2">DeepSeek V3.2</option>
+            <option value="mistral-large-3:675b">Mistral Large 3</option>
+            <option value="qwen3-coder:480b">Qwen3 Coder 480B</option>
+            <option value="kimi-k2-thinking">Kimi K2 Thinking</option>
+            <option value="minimax-m2.1">MiniMax M2.1</option>
+            <option value="gemma3:27b">Gemma 3 (27B)</option>
+            <option value="devstral-2:123b">Devstral 2</option>
+            <option value="cogito-2.1:671b">Cogito 2.1</option>
+            <option value="glm-4.7">GLM 4.7</option>
           </select>
           <button class="chip" id="slash-chip">/</button>
           <button class="chip">@repo</button>
