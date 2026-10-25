@@ -1,8 +1,15 @@
 import * as vscode from 'vscode';
 import { streamAI } from './ai/ollama.js';
 let panel;
+let lastActiveEditor;
 export function activate(context) {
     console.log('OpenAgent: activate()');
+    lastActiveEditor = vscode.window.activeTextEditor;
+    context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
+        if (editor) {
+            lastActiveEditor = editor;
+        }
+    }));
     // Register the command that opens the standalone webview panel
     context.subscriptions.push(vscode.commands.registerCommand('auto.openAgent', async () => {
         // 1️⃣ Get the token
@@ -28,6 +35,17 @@ export function activate(context) {
                 catch (e) {
                     panel?.webview.postMessage({ command: 'error', text: '⚠️ Failed to get response from AI.' });
                 }
+            }
+            else if (msg.command === 'get-context') {
+                postEditorContext(panel.webview, vscode.window.activeTextEditor ?? lastActiveEditor);
+            }
+            else if (msg.command === 'apply') {
+                const editor = vscode.window.activeTextEditor ?? lastActiveEditor;
+                if (!editor || typeof msg.code !== 'string') {
+                    vscode.window.showWarningMessage('Open a text editor before applying code.');
+                    return;
+                }
+                await previewCodeChange(editor, msg.code);
             }
         });
     }));
@@ -130,7 +148,61 @@ class OpenAgentViewProvider {
             else if (msg.command === 'request-token') {
                 await getToken(this.context);
             }
+            else if (msg.command === 'get-context') {
+                const editor = vscode.window.activeTextEditor ?? lastActiveEditor;
+                postEditorContext(webviewView.webview, editor);
+            }
+            else if (msg.command === 'apply') {
+                const editor = vscode.window.activeTextEditor ?? lastActiveEditor;
+                if (!editor || typeof msg.code !== 'string') {
+                    vscode.window.showWarningMessage('Open a text editor before applying code.');
+                    return;
+                }
+                await previewCodeChange(editor, msg.code);
+            }
         });
+    }
+}
+function postEditorContext(webview, editor) {
+    if (!editor) {
+        webview.postMessage({ command: 'context', text: 'No editor is open. Open a file first.' });
+        return;
+    }
+    const selection = editor.selection;
+    const selectedText = selection.isEmpty ? '' : editor.document.getText(selection);
+    const content = selectedText || editor.document.getText();
+    const clippedContent = content.length > 20000 ? content.slice(0, 20000) + '\n[Context clipped to 20,000 characters]' : content;
+    webview.postMessage({ command: 'context', text: `Current file: ${vscode.workspace.asRelativePath(editor.document.uri)}\n${selectedText ? 'Selected code' : 'File contents'}:\n\`\`\`${editor.document.languageId}\n${clippedContent}\n\`\`\`` });
+}
+async function previewCodeChange(editor, proposedCode) {
+    const document = editor.document;
+    const selection = editor.selection;
+    const fullText = document.getText();
+    const startOffset = document.offsetAt(selection.start);
+    const endOffset = document.offsetAt(selection.end);
+    const proposedText = fullText.slice(0, startOffset) + proposedCode + fullText.slice(endOffset);
+    const previewUri = vscode.Uri.parse(`openagent-preview:/${Date.now()}-${Math.random().toString(36).slice(2)}/${document.uri.path.split('/').pop() || 'proposal'}`);
+    const previewContent = new Map([[previewUri.toString(), proposedText]]);
+    const provider = new class {
+        provideTextDocumentContent(uri) { return previewContent.get(uri.toString()) ?? ''; }
+    }();
+    const registration = vscode.workspace.registerTextDocumentContentProvider('openagent-preview', provider);
+    try {
+        await vscode.commands.executeCommand('vscode.diff', document.uri, previewUri, 'AI proposed change');
+        const choice = await vscode.window.showInformationMessage('Review the diff. Apply this change to the original file?', 'Apply', 'Cancel');
+        if (choice !== 'Apply')
+            return;
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(document.uri, selection, proposedCode);
+        if (await vscode.workspace.applyEdit(edit)) {
+            vscode.window.showInformationMessage(`AI change applied to ${vscode.workspace.asRelativePath(document.uri)}.`);
+        }
+        else {
+            vscode.window.showErrorMessage('Could not apply the AI change.');
+        }
+    }
+    finally {
+        registration.dispose();
     }
 }
 function getWebviewHtml() {
@@ -253,9 +325,11 @@ function getWebviewHtml() {
   #send-btn svg { width: 20px; height: 20px; fill: currentColor; }
 
   pre { padding: 10px; border-radius: 8px; overflow-x: auto; position: relative; background-color: #1a1a1a !important; }
-  .copy-btn { position: absolute; top: 5px; right: 5px; padding: 4px 8px; border-radius: 4px; border: 1px solid #555; background-color: #333; color: #ccc; cursor: pointer; font-size: 10px; opacity: 0; transition: 0.2s; }
-  pre:hover .copy-btn { opacity: 1; }
+  .copy-btn { position: absolute; top: 5px; right: 5px; padding: 4px 8px; border-radius: 4px; border: 1px solid #555; background-color: #333; color: #ccc; cursor: pointer; font-size: 10px; opacity: 1; transition: 0.2s; }
   .copy-btn:hover { background-color: #444; color: #fff; }
+  .apply-btn { position: absolute; top: 5px; right: 70px; padding: 4px 8px; border-radius: 4px; border: 1px solid #555; background-color: #2d5a2d; color: #8f8; cursor: pointer; font-size: 10px; opacity: 1; transition: 0.2s; }
+  .apply-btn:hover { background-color: #3d7a3d; color: #afa; }
+  .context-btn { background: transparent; border: 1px solid #444; color: #aaa; border-radius: 6px; padding: 4px 8px; font-size: 11px; cursor: pointer; }
   
   .top-controls { display: flex; justify-content: flex-end; margin-bottom: 8px; }
   #clear-btn { background: transparent; border: 1px solid #444; color: #888; border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; }
@@ -368,7 +442,7 @@ function getWebviewHtml() {
             <option value="glm-4.7">GLM 4.7</option>
           </select>
           <button class="chip" id="slash-chip">/</button>
-          <button class="chip">@repo</button>
+          <button class="context-btn" id="context-btn" title="Include the open file and selection in the next prompt">Add editor context</button>
         </div>
         <button id="send-btn" title="Send Message">
           <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
@@ -394,6 +468,7 @@ const slashChip = document.getElementById('slash-chip');
 
 let currentAgentMessage = null;
 let messages = []; // Conversation history
+let pendingContext = '';
 
 function appendMessage(content, sender) {
   const msg = document.createElement('div');
@@ -416,16 +491,27 @@ function appendMessage(content, sender) {
 function addCopyButtons(container) {
   container.querySelectorAll('pre').forEach(pre => {
     if (pre.querySelector('.copy-btn')) return;
+    const code = pre.querySelector('code');
+    if (!code) return;
+    const codeText = code.innerText;
+    
     const btn = document.createElement('button');
     btn.className = 'copy-btn';
     btn.innerText = 'Copy';
     btn.onclick = () => {
-      const code = pre.querySelector('code').innerText;
-      navigator.clipboard.writeText(code);
+      navigator.clipboard.writeText(codeText);
       btn.innerText = 'Copied!';
       setTimeout(() => btn.innerText = 'Copy', 2000);
     };
     pre.appendChild(btn);
+
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'apply-btn';
+    applyBtn.innerText = 'Apply';
+    applyBtn.onclick = () => {
+      vscode.postMessage({ command: 'apply', code: codeText });
+    };
+    pre.appendChild(applyBtn);
   });
 }
 
@@ -448,13 +534,19 @@ async function sendMessage() {
   if (!text) return;
   const model = document.getElementById('model').value;
 
+  const contextToSend = pendingContext;
+  const prompt = contextToSend ? text + '\\n\\n' + contextToSend : text;
   appendMessage(text, 'user');
   input.value = '';
+  pendingContext = '';
   appendTyping();
   currentAgentMessage = null;
 
-  vscode.postMessage({ command: 'send', messages, model });
+  const requestMessages = messages.map((message, index) => index === messages.length - 1 ? { ...message, content: prompt } : message);
+  vscode.postMessage({ command: 'send', messages: requestMessages, model });
 }
+
+document.getElementById('context-btn').addEventListener('click', () => vscode.postMessage({ command: 'get-context' }));
 
 sendBtn.addEventListener('click', sendMessage);
 input.addEventListener('keydown', (e) => {
@@ -576,6 +668,14 @@ window.addEventListener('message', event => {
       vscode.postMessage({ command: 'request-token' });
     };
     chat.scrollTop = chat.scrollHeight;
+  } else if (data.command === 'context') {
+    if (data.text && !data.text.startsWith('No editor is open.')) {
+      pendingContext = data.text;
+      input.placeholder = 'Editor context added. Ask about or modify the code...';
+      appendMessage('Editor context added for the next prompt.', 'agent');
+    } else {
+      appendMessage(data.text, 'agent');
+    }
   } else if (data.command === 'error') {
     appendMessage(data.text, 'agent');
   }

@@ -2,6 +2,17 @@
 
 All notable changes to the **OpenAgent AI** extension will be documented in this file.
 
+## [1.0.16] - 2026-10-25
+
+### Added
+- Added editor context to chat prompts, using the current selection or open file.
+- Added visible Apply and Copy controls to AI code blocks.
+- Added a diff preview before applying AI-generated code to the current editor.
+
+### Fixed
+- Applying code with no selection now inserts it at the cursor instead of replacing the entire file.
+- Apply and editor context work from both the sidebar and standalone chat panel.
+
 ## [1.0.14] - 2026-01-26
 
 ### Added

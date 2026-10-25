@@ -3,7 +3,7 @@
   "displayName": "OpenAgent AI",
   "publisher": "YousifAbdalkarim",
   "description": "Open and free AI agent inside VS Code",
-  "version": "1.0.14",
+  "version": "1.0.16",
   "icon": "appIcon.png",
   "engines": {
     "vscode": "^1.104.0"
